@@ -20,6 +20,8 @@ app.use("/auth", AuthRoute);
 app.use("/users", userRoute);
 app.use("/questions", questionRoute);
 
+app.get("")
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });

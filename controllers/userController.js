@@ -1,27 +1,22 @@
 const UserModel = require("../models/userModel");
 const bcrypt = require("bcrypt");
 
-const getAllUser = async (req, res) => {
+const getAllUsers = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) - 1 || 0;
+    const page = Math.max(parseInt(req.query.page) - 1, 0) || 0;
     const limit = parseInt(req.query.limit) || 10000000;
     const skip = page * limit;
 
-    let sort = req.query.sort || "score";
+    const sortParam = req.query.sort ? req.query.sort.split(",") : ["score"];
+    const sortBy = { [sortParam[0]]: sortParam[1] || "desc" };
 
-    req.query.sort ? (sort = req.query.sort.split(",")) : (sort = [sort]);
-    let sortBy = {};
-    if (sort[1]) {
-      sortBy[sort[0]] = sort[1];
-    } else {
-      sortBy[sort[0]] = "desc";
-    }
     const users = await UserModel.find({ isAdmin: false })
       .select("username score updatedAnswerAt isBan")
-      .sort({ score: "desc", updatedAnswerAt: "asc" })
+      .sort(sortBy)
       .skip(skip)
       .limit(limit)
       .exec();
+
     res.status(200).json(users);
   } catch (error) {
     console.error(error);
@@ -29,105 +24,86 @@ const getAllUser = async (req, res) => {
   }
 };
 
-//update user score
 const updateScore = async (req, res) => {
   const { username, newscore } = req.body;
+  
+  if (typeof newscore !== "number") {
+    return res.status(400).json({ message: "Invalid score. Must be a number." });
+  }
+
   try {
-    if (typeof newscore !== "number") {
-      return res
-        .status(400)
-        .json({ message: "Invalid score. Score must be a number" });
-    }
-    const user = await UserModel.findOne({ username: username });
+    const user = await UserModel.findOneAndUpdate(
+      { username },
+      { $set: { score: newscore } },
+      { new: true }
+    );
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    await UserModel.updateOne(
-      { username: username },
-      { $set: { score: newscore } }
-    );
+
     res.status(200).json({ message: "Score updated successfully" });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-//update user password
 const updatePassword = async (req, res) => {
   const { username, newpassword } = req.body;
+  
   try {
-    const user = await UserModel.findOne({ username: username });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(newpassword, salt);
-    await UserModel.updateOne(
-      { username: username },
-      { $set: { password: hashedPassword } }
-    );
-    await user.save();
+    const user = await UserModel.findOne({ username });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const hashedPassword = await bcrypt.hash(newpassword, 10);
+    await UserModel.updateOne({ username }, { $set: { password: hashedPassword } });
+    
     res.status(200).json({ message: "Password updated successfully" });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-//Update Ban status
 const isBanStatus = async (req, res) => {
   const { username, banstatus } = req.body;
+  
+  if (typeof banstatus !== "boolean") {
+    return res.status(400).json({ message: "Invalid input. Must be a boolean." });
+  }
+
   try {
     const user = await UserModel.findOne({ username });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    if (typeof banstatus !== "boolean") {
-      return res
-        .status(400)
-        .json({ message: "Invalid ban input. it must be a boolean" });
-    }
-
-    if (user.isBan && banstatus === true) {
-      const TimeOut = 15 * 60 * 1000;
-
+    if (user.isBan && banstatus) {
+      const timeoutDuration = 15 * 60 * 1000;
       const timeElapsed = Date.now() - user.banTime;
-
-      if (timeElapsed < TimeOut) {
-        const remainingTime = TimeOut - timeElapsed;
-        await UserModel.findByIdAndUpdate(req.params.id, { isBan: true });
+      
+      if (timeElapsed < timeoutDuration) {
         return res.status(200).json({
-          message: `User has banned already. Please wait for ${remainingTime} milliseconds.`,
-          remainingTime: remainingTime,
+          message: `User is already banned. Please wait ${timeoutDuration - timeElapsed} ms before unbanning.`,
+          remainingTime: timeoutDuration - timeElapsed,
           isBan: user.isBan,
         });
       }
     }
 
-    if (banstatus === true) {
-      banTime = new Date();
+    const updateFields = banstatus ? { isBan: true, banTime: Date.now() } : { isBan: false, banTime: null };
+    await UserModel.updateOne({ username }, { $set: updateFields });
+
+    if (banstatus) {
       setTimeout(async () => {
-        await UserModel.updateOne({ username }, { isBan: false });
+        await UserModel.updateOne({ username }, { $set: { isBan: false } });
       }, 15 * 60 * 1000);
-      await UserModel.updateOne(
-        { username: username },
-        { $set: { isBan: banstatus, banTime: banTime } }
-      );
-    } else {
-      await UserModel.updateOne(
-        { username: username },
-        { $set: { isBan: banstatus, banTime: null } }
-      );
     }
 
-    res
-      .status(200)
-      .json({ user, message: `Ban status updated successfully ${banstatus}` });
+    res.status(200).json({ message: `Ban status updated successfully to ${banstatus}` });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-module.exports = { getAllUser, updateScore, updatePassword, isBanStatus };
+module.exports = { getAllUsers, updateScore, updatePassword, isBanStatus };

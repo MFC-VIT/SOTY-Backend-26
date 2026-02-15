@@ -1,4 +1,6 @@
 // seedQuestions.js
+require("dotenv").config({ path: "../.env" });
+console.log(process.env.CONNECT_STRING)
 const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");

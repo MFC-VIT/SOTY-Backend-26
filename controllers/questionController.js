@@ -5,12 +5,21 @@ const questionModel = require("../models/questionModel");
 
 const questionFilePath = path.join(__dirname, "../questions.json");
 
-//getQuestions based on difficulyLevel
 const getQuestions = async (req, res) => {
   const { id } = req.params;
   const { difficultyLevel } = req.query;
+
   try {
-    if (questionModel.length === 0) {
+
+    const isLastAnswered = await checkLastQuestionAnswered(id, difficultyLevel);
+    if (!isLastAnswered) {
+      return res.status(400).json({
+        message: "Please answer the last question before getting a new one.",
+      });
+    }
+
+    const totalQuestions = await questionModel.countDocuments();
+    if (totalQuestions === 0) {
       return res.status(200).json({
         message: "No questions available.",
       });
@@ -69,7 +78,6 @@ const getQuestions = async (req, res) => {
   }
 };
 
-//getAllQuestions based on users
 const getAllQuestions = async (req, res) => {
   try {
     const allQuestions = await questionModel.find({
@@ -80,7 +88,6 @@ const getAllQuestions = async (req, res) => {
         .status(404)
         .json({ message: "The user haven't started the game." });
     }
-    // console.log(allQuestions);
     res.status(200).json(allQuestions);
   } catch (error) {
     console.error(error);
@@ -88,7 +95,6 @@ const getAllQuestions = async (req, res) => {
   }
 };
 
-//getAllAnsweredQuestions based on users
 const getAllAnsweredQuestions = async (req, res) => {
   try {
     const allQuestions = await questionModel.find({
@@ -98,9 +104,12 @@ const getAllAnsweredQuestions = async (req, res) => {
     if (allQuestions.length === 0) {
       return res
         .status(404)
-        .json({ message: "The user haven't started the game." });
+        .json(
+          { 
+            message: "The user haven't started the game." 
+          }
+        );
     }
-    // console.log(allQuestions);
     res.status(200).json(allQuestions);
   } catch (error) {
     console.error(error);
@@ -108,7 +117,6 @@ const getAllAnsweredQuestions = async (req, res) => {
   }
 };
 
-//postAnswer
 const postAnswerQuestion = async (req, res) => {
   try {
     const { id } = req.params;
@@ -117,7 +125,11 @@ const postAnswerQuestion = async (req, res) => {
     const user = await userModel.findById(id);
 
     if (!user) {
-      return res.status(404).json({ message: "User not found." });
+      return res.status(404).json(
+        { 
+          message: "User not found." 
+        }
+      );
     }
     console.log("user", user);
     const postAnswers = await questionModel.findOne({
@@ -130,7 +142,11 @@ const postAnswerQuestion = async (req, res) => {
     if (typeof points !== "number") {
       return res
         .status(400)
-        .json({ message: "Invalid score. Score must be a number" });
+        .json(
+          {
+             message: "Invalid score. Score must be a number" 
+          }
+        );
     }
     if (postAnswers) {
       const questions = JSON.parse(fs.readFileSync(questionFilePath, "utf8"));
@@ -161,7 +177,11 @@ const postAnswerQuestion = async (req, res) => {
             updatedScore: updatedScore,
           });
         } else {
-          return res.status(404).json({ message: "User not found." });
+          return res.status(404).json(
+            { 
+              message: "User not found." 
+            }
+          );
         }
       } else {
         await userModel.findByIdAndUpdate(id, {
@@ -183,9 +203,11 @@ const postAnswerQuestion = async (req, res) => {
       }
     }
     console.log("postAnswers", postAnswers);
-    return res.status(404).json({
+    return res.status(404).json(
+      {
       message: "Already answered the question",
-    });
+      }
+    );
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -223,7 +245,12 @@ const getAnsweringStatus = async (req, res) => {
       }
     }
     console.log(user);
-    return res.status(200).json({ canAnswer, message: "User can answer" });
+    return res.status(200).json(
+      { 
+        canAnswer,
+        message: "User can answer" 
+      }
+    );
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
